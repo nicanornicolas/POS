@@ -11,11 +11,13 @@ var builder = WebApplication.CreateBuilder(args);
 
 // 1. Persistence setup
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddScoped<IAppDbContext>(provider => provider.GetRequiredService<AppDbContext>());
 
 // 2. CQRS / MediatR setup
-builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(ProcessRefundCommand).Assembly));
+builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblies(
+    typeof(ProcessRefundCommand).Assembly,
+    typeof(FlutterwaveClient).Assembly));
 
 // 3. Provider setup with Polly resilience
 builder.Services.AddHttpClient<IFlutterwaveClient, FlutterwaveClient>()
