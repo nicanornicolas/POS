@@ -1,3 +1,11 @@
+// -----------------------------------------------------------------------
+// <copyright file="AppDbContext.cs" company="Ikonex Systems">
+//     Copyright (c) 2026 Ikonex Systems. All rights reserved.
+//     PROPRIETARY AND CONFIDENTIAL.
+//     Unauthorized copying of this file, via any medium, is strictly prohibited.
+// </copyright>
+// -----------------------------------------------------------------------
+
 using Application.Interfaces;
 using Domain.Entities;
 using Domain.ValueObjects;
