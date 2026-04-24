@@ -1,3 +1,4 @@
+using Application.Events;
 using Application.Exceptions;
 using Application.Interfaces;
 using Domain.Entities;
@@ -9,7 +10,7 @@ namespace Application.Commands;
 
 public sealed record ProcessWebhookCommand(string ProviderTransactionId) : IRequest<bool>;
 
-public sealed class ProcessWebhookCommandHandler(IAppDbContext dbContext, IFlutterwaveClient flutterwave)
+public sealed class ProcessWebhookCommandHandler(IAppDbContext dbContext, IFlutterwaveClient flutterwave, IMediator mediator)
     : IRequestHandler<ProcessWebhookCommand, bool>
 {
     public async Task<bool> Handle(ProcessWebhookCommand request, CancellationToken ct)
@@ -47,6 +48,8 @@ public sealed class ProcessWebhookCommandHandler(IAppDbContext dbContext, IFlutt
         dbContext.LedgerEntries.Add(LedgerEntry.Credit(transaction.Id, "MerchantEscrow", transaction.Amount, "Sale settlement"));
 
         await dbContext.SaveChangesAsync(ct);
+        await mediator.Publish(new TransactionSettledEvent(transaction.Id, transaction.TerminalId, transaction.Amount), ct);
+
         return true;
     }
 }
