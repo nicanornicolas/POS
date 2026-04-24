@@ -1,50 +1,25 @@
-# POS Backend (FinTech MVP)
+# POS Backend
 
-Production-oriented, cleanly layered .NET 8 backend for card payment lifecycle management with strict financial invariants, idempotent webhook handling, and secure refund processing.
+Production-oriented .NET 8 backend for POS transaction lifecycle management with strict financial invariants, idempotent webhook handling, and secure refund processing.
 
-## 1. Purpose
+## Purpose
 
-This backend powers POS transaction lifecycle operations for a cashier-facing terminal flow and is designed for:
+This service powers card payment transaction orchestration for POS terminals and focuses on:
 
-- Correctness under edge cases (retries, duplicate callbacks, malformed payloads).
-- Strong separation of concerns (Domain, Application, Infrastructure, API).
-- Fail-fast behavior for critical configuration.
-- Extensibility toward future payment rails and Web3 settlement engines.
+- Financial correctness under retries, duplicates, and malformed payloads.
+- Strict architecture boundaries (`Domain`, `Application`, `Infrastructure`, `Api`).
+- Secure, layered webhook validation before settlement.
+- Clear extension points for terminal notification and crypto conversion workflows.
 
-## 2. Current Scope
-
-Implemented in this MVP:
-
-- Domain model for monetary values, transaction state machine, and ledger entries.
-- Application command handlers for:
-  - Refund processing
-  - Webhook settlement processing
-- Infrastructure adapters:
-  - EF Core persistence context and mappings
-  - Typed Flutterwave client with retry resilience
-- API surface:
-  - Thin controller endpoints
-  - Layer 1 webhook signature filter
-  - Global exception handling middleware
-- Automated tests for domain invariants and high-risk paths.
-
-Out of current scope (planned next):
-
-- Charge initiation endpoint (`POST /api/v1/transactions/charge`)
-- Device authentication and JWT issuance flow
-- Push confirmation channel back to POS app (SignalR/FCM)
-
-## 3. Architecture
+## Architecture
 
 The solution follows Clean Architecture with strict inward dependencies.
 
-- Domain: Entities, value objects, enums, business invariants.
-- Application: Use-case orchestration via MediatR, contracts, explicit exceptions.
-- Infrastructure: EF Core implementation, provider gateway implementation.
-- Api: HTTP concerns only, middleware, DI, routing.
-- Tests: Deterministic unit tests for invariants and risk paths.
-
-### 3.1 Project Structure
+- `Domain`: Entities, value objects, enums, and business invariants.
+- `Application`: CQRS/MediatR command handlers, contracts, and application exceptions.
+- `Infrastructure`: EF Core + PostgreSQL persistence, Flutterwave gateway, integration handlers.
+- `Api`: HTTP controllers, middleware, DI wiring, and request filters.
+- `Tests`: Unit/integration-style tests for domain and high-risk command paths.
 
 ```text
 Api/
@@ -55,43 +30,46 @@ Tests/
 pos.sln
 ```
 
-## 4. Security Model
+## Runtime Stack
 
-Webhook processing uses layered defenses:
+- .NET SDK: 8.x
+- Database provider: PostgreSQL via `Npgsql.EntityFrameworkCore.PostgreSQL`
+- Local database container: `docker-compose.yml` (`postgres:16-alpine`, exposed on `localhost:5432`)
 
-1. Layer 1 (API filter): Verify incoming `verif-hash` header matches configured secret.
-2. Layer 2 (provider verification): Verify webhook transaction against provider API.
-3. Layer 3 (local reconciliation): Confirm amount/currency match local transaction and enforce idempotency.
+## API Contract
 
-If any layer fails, settlement is blocked.
+Base route prefix: `/api/v1`
 
-## 5. Financial Invariants
+### 1. Charge Initiation
 
-Core invariants enforced by design:
+- Method: `POST`
+- Route: `/api/v1/transactions/charge`
+- Body:
 
-- Money cannot be negative.
-- Money arithmetic requires matching currencies.
-- Transaction state transitions are guarded:
-  - `Pending -> Settled -> Refunded`
-  - Invalid transitions throw explicit exceptions.
-- Ledger entries are double-entry style with required debit/credit semantics.
-- Duplicate webhook processing does not duplicate financial side effects.
-- Refund of non-settled transactions is rejected.
+```json
+{
+  "amount": 1000,
+  "currency": "KES",
+  "paymentToken": "flw-t1nf-test",
+  "terminalId": "TERM-003"
+}
+```
 
-## 6. API Contract (Android Handoff)
+- Success response: `202 Accepted`
 
-### 6.1 Initiate Refund
+```json
+{
+  "transactionId": "guid",
+  "status": "Pending",
+  "message": "Charge initiated. Awaiting network confirmation."
+}
+```
+
+### 2. Refund
 
 - Method: `POST`
 - Route: `/api/v1/transactions/{id}/refund`
-- Trigger: Cashier selects a transaction and presses Void/Refund.
-
-Headers:
-
-- `Content-Type: application/json`
-- `Authorization: Bearer <Terminal_JWT>` (planned for device auth phase)
-
-Success response (`200 OK`):
+- Success response: `200 OK`
 
 ```json
 {
@@ -100,30 +78,18 @@ Success response (`200 OK`):
 }
 ```
 
-Validation/state failure example (`400 Bad Request`):
+Possible failures include:
 
-```json
-{
-  "error": "Only settled transactions can be refunded."
-}
-```
+- `404 Not Found` (`TransactionNotFoundException`)
+- `400 Bad Request` (`InvalidTransactionStateException`)
+- `502 Bad Gateway` (`ProviderOperationFailedException`)
 
-Other possible responses:
-
-- `404 Not Found` if transaction does not exist.
-- `502 Bad Gateway` if provider operation fails.
-
-### 6.2 Flutterwave Webhook
+### 3. Flutterwave Webhook
 
 - Method: `POST`
 - Route: `/api/v1/webhooks/flutterwave`
-- Caller: Flutterwave (not Android app)
-
-Required header:
-
-- `verif-hash: <YourConfiguredWebhookHash>`
-
-Payload shape:
+- Required header: `verif-hash: <Flutterwave:WebhookHash>`
+- Payload:
 
 ```json
 {
@@ -133,25 +99,29 @@ Payload shape:
 }
 ```
 
-Behavior:
+- Success response: `200 OK`
 
-- Validates hash (Layer 1)
-- Verifies with provider (Layer 2)
-- Reconciles amount/currency + idempotency (Layer 3)
-- Settles local transaction and writes ledger entries
-- Returns `200 OK` after successful processing path
+## Security Model
 
-## 7. Exception-to-HTTP Mapping
+Webhook processing uses layered validation:
 
-Global exception middleware maps application exceptions to status codes:
+1. API filter validates incoming `verif-hash` header.
+2. Provider verification checks transaction status via Flutterwave API.
+3. Local reconciliation confirms amount/currency and enforces idempotency.
+
+Settlement is blocked if any validation layer fails.
+
+## Exception-to-HTTP Mapping
+
+Global exception middleware maps exceptions to status codes:
 
 - `TransactionNotFoundException` -> `404 Not Found`
 - `InvalidTransactionStateException` -> `400 Bad Request`
 - `AmountMismatchException` -> `409 Conflict`
 - `ProviderOperationFailedException` -> `502 Bad Gateway`
-- Any unhandled exception -> `500 Internal Server Error`
+- Unhandled exception -> `500 Internal Server Error`
 
-Error response envelope:
+Error envelope:
 
 ```json
 {
@@ -159,121 +129,73 @@ Error response envelope:
 }
 ```
 
-## 8. Configuration
+## Configuration
 
-### 8.1 Required Settings
-
-Set these before running the API:
+Required settings:
 
 - `ConnectionStrings:DefaultConnection`
 - `Flutterwave:SecretKey`
 - `Flutterwave:WebhookHash`
 
-### 8.2 Fail-Fast Startup Guard
+Startup fail-fast behavior:
 
-The API validates critical Flutterwave settings before startup. If either key is missing, the service throws during boot and does not start.
+- The API throws during startup if `Flutterwave:SecretKey` or `Flutterwave:WebhookHash` is missing.
 
-This prevents runtime payment failures during checkout.
-
-### 8.3 Example appsettings.Development.json snippet
+Example (`Api/appsettings.Development.json`):
 
 ```json
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Server=.;Database=PosDb;Trusted_Connection=True;TrustServerCertificate=True"
+    "DefaultConnection": "Host=localhost;Port=5432;Database=ikonex_db;Username=postgres;Password=SuperSecurePosDB!2026;"
   },
   "Flutterwave": {
-    "SecretKey": "FLWSECK_TEST_xxx",
-    "WebhookHash": "your_webhook_hash"
+    "SecretKey": "FLWSECK_TEST-sandboxkey",
+    "WebhookHash": "CORRECT_HASH"
   }
 }
 ```
 
-Do not commit production secrets. Use user secrets, environment variables, or a secret manager.
+Do not store production secrets in source control.
 
-## 9. Local Development
+## Local Development
 
-Prerequisites:
+### 1. Start PostgreSQL
 
-- .NET SDK 8.0+
-- SQL Server instance (for runtime API persistence)
+```bash
+docker compose up -d
+```
 
-Install/restore and build:
+### 2. Restore, Build, Test
 
 ```bash
 dotnet restore
-dotnet build pos.sln
+dotnet build pos.sln -m:1 -v minimal
+dotnet test pos.sln -m:1 -v minimal
 ```
 
-Run tests:
-
-```bash
-dotnet test pos.sln
-```
-
-Run API:
+### 3. Run API
 
 ```bash
 dotnet run --project Api/Api.csproj
 ```
 
-## 10. Testing Strategy
+## Regression Baseline (Current)
 
-### 10.1 Domain Invariant Tests
+Repository regression check commands:
 
-- Money validation and arithmetic constraints
-- Transaction transition guard clauses and idempotency
-- Ledger entry creation constraints
+```bash
+dotnet build pos.sln -m:1 -v minimal
+dotnet test pos.sln -m:1 -v minimal
+```
 
-### 10.2 High-Risk Path Tests
+Current baseline status:
 
-Using EF Core InMemory + mocked provider client:
+- Build: passed
+- Tests: passed (`20/20`)
+- Failing regressions: none observed
 
-- Refund on pending transaction is blocked.
-- Re-refund path is idempotent and avoids provider re-call.
-- Webhook amount mismatch throws and does not settle.
-- Duplicate webhook returns success without state mutation.
-- Webhook filter rejects missing/invalid signature headers.
+## License
 
-## 11. Operational Notes
+This repository is proprietary and confidential software owned by Ikonex Systems.
 
-- Typed `HttpClient` for provider integration includes exponential backoff retry policy.
-- Ensure webhook source can reach deployed backend over HTTPS.
-- Monitor logs for exception middleware outputs and provider retry behavior.
-
-## 12. Android (Kotlin / Sunmi V2 Pro) Integration Prep
-
-Immediate preparation checklist for Android team:
-
-1. Hardware readiness:
-- Charge Sunmi V2 Pro.
-- Confirm stable Kenyan LTE connectivity (Safaricom/Airtel).
-- Enable developer options.
-
-2. SDK imports:
-- SunmiPaySDK (secure EMV/AIDL integration)
-- SunmiPrinterSDK (thermal receipt printing)
-- Flutterwave Android POS SDK (DUKPT encrypted card data flow)
-
-3. UI state machine scaffolding (Jetpack Compose ViewModel):
-- `Idle -> AwaitingTap -> Processing -> Approved -> Printing`
-
-4. Backend interaction assumptions:
-- POS app calls refund endpoint as specified.
-- POS app does not call webhook endpoint directly.
-- POS app can remain in "Waiting for Confirmation" until backend settlement confirmation strategy is added.
-
-## 13. Suggested Next Backend Increment
-
-- Add `POST /api/v1/transactions/charge` via the same CQRS pattern.
-- Add auth middleware and issue device-bound JWT tokens.
-- Add push notification channel (SignalR/FCM) for terminal confirmation and printer trigger.
-
-## 14. Repository Health Snapshot
-
-Current status at this phase:
-
-- Clean architecture layering in place.
-- Deterministic unit tests green.
-- High-risk financial and webhook paths covered.
-- API contract ready for Android handoff.
+See [LICENSE.txt](LICENSE.txt) for full legal terms and restrictions.
