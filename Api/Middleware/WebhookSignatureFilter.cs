@@ -1,3 +1,11 @@
+// -----------------------------------------------------------------------
+// <copyright file="WebhookSignatureFilter.cs" company="Ikonex Systems">
+//     Copyright (c) 2026 Ikonex Systems. All rights reserved.
+//     PROPRIETARY AND CONFIDENTIAL.
+//     Unauthorized copying of this file, via any medium, is strictly prohibited.
+// </copyright>
+// -----------------------------------------------------------------------
+
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Configuration;
