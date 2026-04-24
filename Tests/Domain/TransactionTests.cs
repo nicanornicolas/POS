@@ -10,7 +10,7 @@ public class TransactionTests
     [Fact]
     public void MarkAsSettled_IsIdempotent()
     {
-        var transaction = new Transaction("FLW-123", new Money(100m, "KES"));
+        var transaction = new Transaction("FLW-123", new Money(100m, "KES"), "TERM-001");
 
         transaction.MarkAsSettled();
         transaction.MarkAsSettled();
@@ -21,7 +21,7 @@ public class TransactionTests
     [Fact]
     public void MarkAsRefunded_RequiresSettledTransaction()
     {
-        var transaction = new Transaction("FLW-123", new Money(100m, "KES"));
+        var transaction = new Transaction("FLW-123", new Money(100m, "KES"), "TERM-001");
 
         Action act = () => transaction.MarkAsRefunded();
 
@@ -32,7 +32,7 @@ public class TransactionTests
     [Fact]
     public void MarkAsRefunded_IsIdempotentAfterRefund()
     {
-        var transaction = new Transaction("FLW-123", new Money(100m, "KES"));
+        var transaction = new Transaction("FLW-123", new Money(100m, "KES"), "TERM-001");
         transaction.MarkAsSettled();
         transaction.MarkAsRefunded();
 

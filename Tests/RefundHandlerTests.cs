@@ -26,7 +26,7 @@ public class RefundHandlerTests
     public async Task Handle_PendingTransaction_ThrowsInvalidTransactionStateException()
     {
         await using var db = GetInMemoryDbContext();
-        var tx = new Transaction("FLW-123", new Money(100, "KES"));
+        var tx = new Transaction("FLW-123", new Money(100, "KES"), "TERM-001");
         db.Transactions.Add(tx);
         await db.SaveChangesAsync(CancellationToken.None);
 
@@ -43,7 +43,7 @@ public class RefundHandlerTests
     public async Task Handle_AlreadyRefundedTransaction_ReturnsTrue_WithoutCallingProvider()
     {
         await using var db = GetInMemoryDbContext();
-        var tx = new Transaction("FLW-456", new Money(100, "KES"));
+        var tx = new Transaction("FLW-456", new Money(100, "KES"), "TERM-001");
         tx.MarkAsSettled();
         tx.MarkAsRefunded();
         db.Transactions.Add(tx);
