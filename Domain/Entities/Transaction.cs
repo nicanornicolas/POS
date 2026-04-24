@@ -9,6 +9,8 @@ public sealed class Transaction
 
     public string ProviderTransactionId { get; private set; } = string.Empty;
 
+    public string TerminalId { get; private set; } = string.Empty;
+
     public Money Amount { get; private set; } = Money.Zero();
 
     public TransactionStatus Status { get; private set; }
@@ -19,21 +21,30 @@ public sealed class Transaction
 
     public DateTime? RefundedAtUtc { get; private set; }
 
+    // Modern Npgsql Concurrency Token (maps to PostgreSQL xmin)
+    public uint Version { get; private set; }
+
     private Transaction()
     {
     }
 
-    public Transaction(string providerTransactionId, Money amount)
+    public Transaction(string providerTransactionId, Money amount, string terminalId)
     {
         if (string.IsNullOrWhiteSpace(providerTransactionId))
         {
             throw new ArgumentException("Provider transaction ID is required.", nameof(providerTransactionId));
         }
 
+        if (string.IsNullOrWhiteSpace(terminalId))
+        {
+            throw new ArgumentException("Terminal ID is required.", nameof(terminalId));
+        }
+
         ArgumentNullException.ThrowIfNull(amount);
 
         Id = Guid.NewGuid();
         ProviderTransactionId = providerTransactionId.Trim();
+        TerminalId = terminalId.Trim();
         Amount = amount;
         Status = TransactionStatus.Pending;
         CreatedAtUtc = DateTime.UtcNow;
