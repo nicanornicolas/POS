@@ -31,11 +31,18 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                 .IsUnique()
                 .HasDatabaseName("IX_Transaction_ProviderTransactionId");
 
+            entity.Property(t => t.TerminalId)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.HasIndex(t => t.TerminalId)
+                .HasDatabaseName("IX_Transaction_TerminalId");
+
             // Configure Money value object as owned type
             entity.OwnsOne(t => t.Amount, money =>
             {
                 money.Property(m => m.Amount)
-                    .HasColumnType("decimal(18,4)")
+                    .HasColumnType("numeric(18,4)")
                     .HasColumnName("Amount")
                     .IsRequired();
 
@@ -59,9 +66,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(t => t.RefundedAtUtc)
                 .IsRequired(false);
 
-            // Concurrency token for idempotency
-            entity.Property<byte[]>("RowVersion")
-                .IsRowVersion();
+            // Modern Npgsql Concurrency Token mapping (replaces obsolete UseXminAsConcurrencyToken)
+            entity.Property(t => t.Version).IsRowVersion();
         });
 
         // Configure LedgerEntry entity
@@ -85,7 +91,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.OwnsOne(le => le.Amount, money =>
             {
                 money.Property(m => m.Amount)
-                    .HasColumnType("decimal(18,4)")
+                    .HasColumnType("numeric(18,4)")
                     .HasColumnName("Amount")
                     .IsRequired();
 
